@@ -16,10 +16,10 @@ const TelemetryCharts: React.FC<TelemetryChartsProps> = ({ data }) => {
   }));
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="charts-grid">
       {/* Temperature Chart */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Temperature</h3>
+      <div className="chart-container">
+        <h3 className="chart-title">Temperature</h3>
         <ResponsiveContainer width="100%" height={300}>
           <AreaChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -38,8 +38,8 @@ const TelemetryCharts: React.FC<TelemetryChartsProps> = ({ data }) => {
       </div>
 
       {/* Pressure Chart */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Pressure</h3>
+      <div className="chart-container">
+        <h3 className="chart-title">Pressure</h3>
         <ResponsiveContainer width="100%" height={300}>
           <AreaChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -58,8 +58,8 @@ const TelemetryCharts: React.FC<TelemetryChartsProps> = ({ data }) => {
       </div>
 
       {/* Humidity Chart */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Humidity</h3>
+      <div className="chart-container">
+        <h3 className="chart-title">Humidity</h3>
         <ResponsiveContainer width="100%" height={300}>
           <AreaChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -78,8 +78,8 @@ const TelemetryCharts: React.FC<TelemetryChartsProps> = ({ data }) => {
       </div>
 
       {/* Altitude Chart */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Altitude</h3>
+      <div className="chart-container">
+        <h3 className="chart-title">Altitude</h3>
         <ResponsiveContainer width="100%" height={300}>
           <AreaChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />

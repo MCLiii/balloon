@@ -10,11 +10,11 @@ interface TelemetryDashboardProps {
 const TelemetryDashboard: React.FC<TelemetryDashboardProps> = ({ data }) => {
   if (!data) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="telemetry-grid">
         {[1, 2, 3, 4, 5, 6].map((i) => (
-          <div key={i} className="bg-gray-200 rounded-lg p-6 animate-pulse">
-            <div className="h-4 bg-gray-300 rounded w-1/2 mb-2"></div>
-            <div className="h-8 bg-gray-300 rounded w-3/4"></div>
+          <div key={i} className="telemetry-card-skeleton">
+            <div className="skeleton-line skeleton-title"></div>
+            <div className="skeleton-line skeleton-value"></div>
           </div>
         ))}
       </div>
@@ -22,7 +22,7 @@ const TelemetryDashboard: React.FC<TelemetryDashboardProps> = ({ data }) => {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="telemetry-grid">
       <TelemetryCard
         title="Temperature"
         value={data.temperature.toFixed(1)}

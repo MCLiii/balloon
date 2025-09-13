@@ -108,7 +108,7 @@ async def start_udp_receiver():
             await asyncio.sleep(0.1)
         except Exception as e:
             print(f"UDP receiver error: {e}")
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.1)
 
 async def broadcast_telemetry(data: Dict[str, Any]):
     """Broadcast telemetry data to all connected WebSocket clients"""

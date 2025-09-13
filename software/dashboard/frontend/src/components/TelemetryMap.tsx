@@ -41,19 +41,19 @@ const TelemetryMap: React.FC<TelemetryMapProps> = ({ data, latestData }) => {
 
   if (!hasValidData) {
     return (
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Balloon Location</h3>
-        <div className="flex items-center justify-center h-64 bg-gray-100 rounded-lg">
-          <p className="text-gray-500">Waiting for GPS coordinates...</p>
+      <div className="map-container">
+        <h3 className="map-title">Balloon Location</h3>
+        <div className="map-placeholder">
+          <p className="map-placeholder-text">Waiting for GPS coordinates...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Balloon Location & Trajectory</h3>
-      <div className="h-64 rounded-lg overflow-hidden">
+    <div className="map-container">
+      <h3 className="map-title">Balloon Location & Trajectory</h3>
+      <div className="map-wrapper">
         <MapContainer
           center={mapCenter}
           zoom={13}
@@ -78,8 +78,8 @@ const TelemetryMap: React.FC<TelemetryMapProps> = ({ data, latestData }) => {
           {latestData && latestData.latitude !== 0 && latestData.longitude !== 0 && (
             <Marker position={[latestData.latitude, latestData.longitude]}>
               <Popup>
-                <div>
-                  <h4 className="font-semibold">Current Position</h4>
+                <div className="map-popup">
+                  <h4 className="map-popup-title">Current Position</h4>
                   <p>Lat: {latestData.latitude.toFixed(6)}</p>
                   <p>Lng: {latestData.longitude.toFixed(6)}</p>
                   <p>Alt: {latestData.altitude.toFixed(1)}m</p>

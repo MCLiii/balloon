@@ -25,20 +25,20 @@ const TelemetryCard: React.FC<TelemetryCardProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 border-l-4" style={{ borderLeftColor: color }}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-2xl font-bold text-gray-900">
-            {value} <span className="text-sm font-normal text-gray-500">{unit}</span>
+    <div className="telemetry-card" style={{ borderLeftColor: color }}>
+      <div className="telemetry-card-content">
+        <div className="telemetry-card-info">
+          <p className="telemetry-card-title">{title}</p>
+          <p className="telemetry-card-value">
+            {value} <span className="telemetry-card-unit">{unit}</span>
           </p>
         </div>
-        <div className="flex items-center space-x-2">
-          <div className="text-2xl" style={{ color }}>
+        <div className="telemetry-card-icon-container">
+          <div className="telemetry-card-icon" style={{ color }}>
             {icon}
           </div>
           {trend && (
-            <span className="text-lg text-gray-400">{getTrendIcon()}</span>
+            <span className="telemetry-card-trend">{getTrendIcon()}</span>
           )}
         </div>
       </div>
