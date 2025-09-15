@@ -23,7 +23,7 @@ const REGISTER_START_CONVERSION: u8 = 0x12;
 
 #[derive(Debug, Clone)]
 pub struct PressureReading {
-    pub pressure_hpa: f32,
+    pub pressure_kpa: f32,
     pub temperature_celsius: f32,
 }
 
@@ -38,7 +38,7 @@ pub struct MPL115A2 {
 impl MPL115A2 {
     pub fn new(mut i2c: I2c) -> Result<Self, Box<dyn std::error::Error>> {
         // Set I2C address
-        i2c.set_slave_address(MPL115A2_ADDRESS)?;
+        i2c.set_slave_address(MPL115A2_ADDRESS as u16)?;
         
         let mut sensor = Self {
             i2c,
@@ -76,7 +76,7 @@ impl MPL115A2 {
         // Read C12 coefficient (16-bit signed)
         let c12_msb = self.read_register(REGISTER_C12_COEFF_MSB)?;
         let c12_lsb = self.read_register(REGISTER_C12_COEFF_LSB)?;
-        let c12_raw = ((c12_msb as i16) << 8) | (c12_lsb as i16);
+        let c12_raw = (((c12_msb as i16) << 8) | (c12_lsb as i16 )) >> 2;
         self.c12 = c12_raw as f32 / 4194304.0; // Convert to floating point
         
         println!("Calibration coefficients: A0={}, B1={}, B2={}, C12={}", 
@@ -116,19 +116,21 @@ impl MPL115A2 {
         
         // Convert ADC values to pressure and temperature
         let pressure_adc = pressure_raw as f32;
+        println!("Pressure ADC: {}", pressure_adc);
         let temp_adc = temp_raw as f32;
+        println!("Temperature ADC: {}", temp_adc);
         
         // Calculate pressure using the compensation formula
         let pressure_comp = self.a0 + (self.b1 + self.c12 * temp_adc) * pressure_adc + self.b2 * temp_adc;
         
-        // Convert to hPa (hectopascals)
-        let pressure_hpa = (pressure_comp * 65.0 / 1023.0) + 50.0;
+        // Convert to kPa 
+        let pressure_kpa = (pressure_comp * 65.0 / 1023.0) + 50.0;
         
         // Convert temperature to Celsius
         let temperature_celsius = (temp_adc - 498.0) / -5.35 + 25.0;
         
         Ok(PressureReading {
-            pressure_hpa,
+            pressure_kpa,
             temperature_celsius,
         })
     }

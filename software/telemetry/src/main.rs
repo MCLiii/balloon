@@ -5,7 +5,7 @@ use std::mem;
 use rppal::i2c::I2c;
 
 mod i2c;
-use i2c::MPL115A2;
+use i2c::MPL115A2::{MPL115A2, PressureReading};
 
 #[repr(C, packed)]  // C layout, no padding
 #[derive(Debug, Clone, Copy)]
@@ -42,13 +42,14 @@ impl TelemetryPacket {
         }
     }
     
-    fn new_with_sensor_data(pressure_hpa: f32, temperature_celsius: f32) -> Self {
+    fn new_with_sensor_data(pressure_kpa: f32, temperature_celsius: f32) -> Self {
         let mut rng = rand::thread_rng();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-
+        
+        let pressure_hpa = pressure_kpa * 10.0;
         // Calculate altitude from pressure using barometric formula
         // h = 44330 * (1 - (P/P0)^0.1903) where P0 = 1013.25 hPa (sea level pressure)
         let sea_level_pressure = 1013.25;
@@ -62,7 +63,7 @@ impl TelemetryPacket {
             sync: 0xFF_FF_FF_FF_FF_FF_FF_FF,
             timestamp: now,
             temperature: temperature_celsius,
-            pressure: pressure_hpa,
+            pressure: pressure_kpa,
             humidity: rng.gen_range(0.0..=100.0),     // Humidity percentage (still simulated)
             altitude,
             latitude: rng.gen_range(-90.0..=90.0),    // Latitude in degrees (still simulated)
@@ -81,17 +82,8 @@ impl TelemetryPacket {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
-    let target_addr = "127.0.0.1:3000";
-    
-    println!("Starting telemetry packet generator...");
-    println!("Sending packets to: {}", target_addr);
-    
-    // Initialize I2C and MPL115A2 barometer
-    let i2c = I2c::new()?;
-    let mut barometer = match MPL115A2::new(i2c) {
+fn init_barometer(i2c: I2c) -> Option<MPL115A2> {
+    let mut barometer: Option<MPL115A2> = match MPL115A2::new(i2c) {
         Ok(sensor) => {
             println!("MPL115A2 barometer initialized successfully");
             Some(sensor)
@@ -102,23 +94,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         }
     };
+
+    return barometer;
+}
+
+fn read_barometer(barometer: &mut Option<MPL115A2>) -> Option<PressureReading> {
+    if let Some(ref mut baro) = barometer {
+        match baro.read_pressure() {
+            Ok(reading) => {
+                println!("Barometer reading: {:.2} kPa, {:.2}°C", 
+                         reading.pressure_kpa, reading.temperature_celsius);
+                Some(reading)
+            },
+            Err(e) => {
+                eprintln!("Failed to read barometer: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let socket = UdpSocket::bind("0.0.0.0:0")?;
+    let target_addr = "127.0.0.1:3000";
+    
+    println!("Starting telemetry packet generator...");
+    println!("Sending packets to: {}", target_addr);
+    
+    // Initialize I2C and MPL115A2 barometer
+    let i2c = I2c::new()?;
+    let mut barometer = init_barometer(i2c);
     
     loop {
-        let packet = if let Some(ref mut baro) = barometer {
-            // Try to read real pressure data
-            match baro.read_pressure() {
-                Ok(reading) => {
-                    println!("Barometer reading: {:.2} hPa, {:.2}°C", 
-                             reading.pressure_hpa, reading.temperature_celsius);
-                    TelemetryPacket::new_with_sensor_data(reading.pressure_hpa, reading.temperature_celsius)
-                }
-                Err(e) => {
-                    eprintln!("Failed to read barometer: {}", e);
-                    TelemetryPacket::new() // Fallback to simulated data
-                }
-            }
+        let packet = if let Some(reading) = read_barometer(&mut barometer) {
+            TelemetryPacket::new_with_sensor_data(reading.pressure_kpa, reading.temperature_celsius)
         } else {
-            TelemetryPacket::new() // Use simulated data if barometer not available
+            TelemetryPacket::new() // Fallback to simulated data
         };
         
         let bytes = packet.as_bytes();
