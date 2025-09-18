@@ -2,11 +2,19 @@ use std::net::UdpSocket;
 use std::time::{SystemTime, UNIX_EPOCH};
 use rand::Rng;
 use std::mem;
+
+// Conditional imports for ARM Linux (Raspberry Pi)
+#[cfg(all(target_os = "linux", target_arch = "arm"))]
 use rppal::i2c::I2c;
 
+#[cfg(all(target_os = "linux", target_arch = "arm"))]
 mod i2c;
+
+#[cfg(all(target_os = "linux", target_arch = "arm"))]
 use i2c::MPL115A2::{MPL115A2, PressureReading};
+#[cfg(all(target_os = "linux", target_arch = "arm"))]
 use i2c::MPU6050::{MPU6050, MotionReading};
+
 
 #[repr(C, packed)]  // C layout, no padding
 #[derive(Debug, Clone, Copy)]
@@ -55,6 +63,7 @@ impl TelemetryPacket {
         }
     }
     
+    #[cfg(all(target_os = "linux", target_arch = "arm"))]
     fn new_with_sensor_data(pressure_kpa: f32, temperature_celsius: f32) -> Self {
         let mut rng = rand::thread_rng();
         let now = SystemTime::now()
@@ -91,6 +100,7 @@ impl TelemetryPacket {
         }
     }
     
+    #[cfg(all(target_os = "linux", target_arch = "arm"))]
     fn new_with_full_sensor_data(pressure_kpa: f32, temperature_celsius: f32, motion: MotionReading) -> Self {
         let mut rng = rand::thread_rng();
         let now = SystemTime::now()
@@ -137,6 +147,7 @@ impl TelemetryPacket {
     }
 }
 
+#[cfg(all(target_os = "linux", target_arch = "arm"))]
 fn init_barometer(i2c: I2c) -> Option<MPL115A2> {
     let barometer: Option<MPL115A2> = match MPL115A2::new(i2c) {
         Ok(sensor) => {
@@ -153,6 +164,7 @@ fn init_barometer(i2c: I2c) -> Option<MPL115A2> {
     return barometer;
 }
 
+#[cfg(all(target_os = "linux", target_arch = "arm"))]
 fn read_barometer(barometer: &mut Option<MPL115A2>) -> Option<PressureReading> {
     if let Some(ref mut baro) = barometer {
         match baro.read_pressure() {
@@ -171,6 +183,7 @@ fn read_barometer(barometer: &mut Option<MPL115A2>) -> Option<PressureReading> {
     }
 }
 
+#[cfg(all(target_os = "linux", target_arch = "arm"))]
 fn init_motion_sensor(i2c: I2c) -> Option<MPU6050> {
     let motion_sensor: Option<MPU6050> = match MPU6050::new(i2c, false) {
         Ok(sensor) => {
@@ -187,6 +200,7 @@ fn init_motion_sensor(i2c: I2c) -> Option<MPU6050> {
     return motion_sensor;
 }
 
+#[cfg(all(target_os = "linux", target_arch = "arm"))]
 fn read_motion_sensor(motion_sensor: &mut Option<MPU6050>) -> Option<MotionReading> {
     if let Some(ref mut motion) = motion_sensor {
         match motion.read_all() {
@@ -207,6 +221,29 @@ fn read_motion_sensor(motion_sensor: &mut Option<MPU6050>) -> Option<MotionReadi
     }
 }
 
+// Fallback functions for non-ARM Linux systems
+#[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+fn init_barometer(_i2c: ()) -> () {
+    println!("Running on non-ARM Linux system - using simulated data");
+    ()
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+fn read_barometer(_barometer: &mut ()) -> () {
+    ()
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+fn init_motion_sensor(_i2c: ()) -> () {
+    println!("Running on non-ARM Linux system - using simulated data");
+    ()
+}
+
+#[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+fn read_motion_sensor(_motion_sensor: &mut ()) -> () {
+    ()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = UdpSocket::bind("0.0.0.0:0")?;
@@ -215,47 +252,84 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting telemetry packet generator...");
     println!("Sending packets to: {}", target_addr);
     
-    // Initialize I2C and sensors
-    let i2c = I2c::new()?;
-    let mut barometer = init_barometer(i2c);
-    
-    // Initialize MPU6050 motion sensor (using a new I2C instance)
-    let i2c_motion = I2c::new()?;
-    let mut motion_sensor = init_motion_sensor(i2c_motion);
-    
-    loop {
-        let pressure_reading = read_barometer(&mut barometer);
-        let motion_reading = read_motion_sensor(&mut motion_sensor);
+    // Check if running on ARM Linux (Raspberry Pi)
+    #[cfg(all(target_os = "linux", target_arch = "arm"))]
+    {
+        println!("Detected ARM Linux system - attempting to initialize Raspberry Pi sensors...");
         
-        let packet = match (pressure_reading, motion_reading) {
-            (Some(pressure), Some(motion)) => {
-                TelemetryPacket::new_with_full_sensor_data(
-                    pressure.pressure_kpa, 
-                    pressure.temperature_celsius, 
-                    motion
-                )
-            },
-            (Some(pressure), None) => {
-                TelemetryPacket::new_with_sensor_data(
-                    pressure.pressure_kpa, 
-                    pressure.temperature_celsius
-                )
-            },
-            _ => TelemetryPacket::new() // Fallback to simulated data
-        };
+        // Initialize I2C and sensors
+        let i2c = I2c::new()?;
+        let mut barometer = init_barometer(i2c);
         
-        let bytes = packet.as_bytes();
+        // Initialize MPU6050 motion sensor (using a new I2C instance)
+        let i2c_motion = I2c::new()?;
+        let mut motion_sensor = init_motion_sensor(i2c_motion);
         
-        match socket.send_to(bytes, target_addr) {
-            Ok(bytes_sent) => {
-                println!("Sent telemetry packet ({} bytes): {:?}", bytes_sent, packet);
-                println!("Packet size: {} bytes", mem::size_of::<TelemetryPacket>());
+        loop {
+            let pressure_reading = read_barometer(&mut barometer);
+            let motion_reading = read_motion_sensor(&mut motion_sensor);
+            
+            let packet = match (pressure_reading, motion_reading) {
+                (Some(pressure), Some(motion)) => {
+                    TelemetryPacket::new_with_full_sensor_data(
+                        pressure.pressure_kpa, 
+                        pressure.temperature_celsius, 
+                        motion
+                    )
+                },
+                (Some(pressure), None) => {
+                    TelemetryPacket::new_with_sensor_data(
+                        pressure.pressure_kpa, 
+                        pressure.temperature_celsius
+                    )
+                },
+                _ => TelemetryPacket::new() // Fallback to simulated data
+            };
+            
+            let bytes = packet.as_bytes();
+            
+            match socket.send_to(bytes, target_addr) {
+                Ok(bytes_sent) => {
+                    println!("Sent telemetry packet ({} bytes): {:?}", bytes_sent, packet);
+                    println!("Packet size: {} bytes", mem::size_of::<TelemetryPacket>());
+                }
+                Err(e) => {
+                    eprintln!("Failed to send packet: {}", e);
+                }
             }
-            Err(e) => {
-                eprintln!("Failed to send packet: {}", e);
-            }
-        }
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+    }
+    
+    #[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+    {
+        println!("Not running on ARM Linux - using simulated data only");
+        
+        // Initialize dummy sensors for non-ARM systems
+        let mut barometer = init_barometer(());
+        let mut motion_sensor = init_motion_sensor(());
+        
+        loop {
+            let _pressure_reading = read_barometer(&mut barometer);
+            let _motion_reading = read_motion_sensor(&mut motion_sensor);
+            
+            // Always use simulated data for non-ARM systems
+            let packet = TelemetryPacket::new();
+            
+            let bytes = packet.as_bytes();
+            
+            match socket.send_to(bytes, target_addr) {
+                Ok(bytes_sent) => {
+                    println!("Sent telemetry packet ({} bytes): {:?}", bytes_sent, packet);
+                    println!("Packet size: {} bytes", mem::size_of::<TelemetryPacket>());
+                }
+                Err(e) => {
+                    eprintln!("Failed to send packet: {}", e);
+                }
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
     }
 }

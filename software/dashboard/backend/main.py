@@ -40,9 +40,11 @@ class TelemetryPacket:
     def __init__(self, data: bytes):
         # Unpack the binary data according to the Rust struct
         # sync: u64, timestamp: u64, temperature: f32, pressure: f32,
-        # humidity: f32, altitude: f32, latitude: f32, longitude: f32, status: u8
+        # humidity: f32, altitude: f32, latitude: f32, longitude: f32,
+        # accel_x: f32, accel_y: f32, accel_z: f32,
+        # gyro_x: f32, gyro_y: f32, gyro_z: f32, status: u8
         print(f"Received {len(data)} bytes")
-        unpacked = struct.unpack('<QQffffffB', data)  # Big-endian format
+        unpacked = struct.unpack('<QQffffffffffffB', data)  # Little-endian format
         self.sync = unpacked[0]
         self.timestamp = unpacked[1]
         self.temperature = unpacked[2]
@@ -51,7 +53,13 @@ class TelemetryPacket:
         self.altitude = unpacked[5]
         self.latitude = unpacked[6]
         self.longitude = unpacked[7]
-        self.status = unpacked[8]
+        self.accel_x = unpacked[8]
+        self.accel_y = unpacked[9]
+        self.accel_z = unpacked[10]
+        self.gyro_x = unpacked[11]
+        self.gyro_y = unpacked[12]
+        self.gyro_z = unpacked[13]
+        self.status = unpacked[14]
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -63,6 +71,12 @@ class TelemetryPacket:
             'altitude': self.altitude,
             'latitude': self.latitude,
             'longitude': self.longitude,
+            'accel_x': self.accel_x,
+            'accel_y': self.accel_y,
+            'accel_z': self.accel_z,
+            'gyro_x': self.gyro_x,
+            'gyro_y': self.gyro_y,
+            'gyro_z': self.gyro_z,
             'status': self.status,
             'received_at': datetime.now().isoformat()
         }
@@ -152,6 +166,12 @@ async def get_telemetry_stats():
     pressures = [d['pressure'] for d in telemetry_data]
     humidities = [d['humidity'] for d in telemetry_data]
     altitudes = [d['altitude'] for d in telemetry_data]
+    accel_x = [d['accel_x'] for d in telemetry_data]
+    accel_y = [d['accel_y'] for d in telemetry_data]
+    accel_z = [d['accel_z'] for d in telemetry_data]
+    gyro_x = [d['gyro_x'] for d in telemetry_data]
+    gyro_y = [d['gyro_y'] for d in telemetry_data]
+    gyro_z = [d['gyro_z'] for d in telemetry_data]
     
     stats = {
         "total_packets": len(telemetry_data),
@@ -174,6 +194,16 @@ async def get_telemetry_stats():
             "min": min(altitudes),
             "max": max(altitudes),
             "avg": sum(altitudes) / len(altitudes)
+        },
+        "accelerometer": {
+            "x": {"min": min(accel_x), "max": max(accel_x), "avg": sum(accel_x) / len(accel_x)},
+            "y": {"min": min(accel_y), "max": max(accel_y), "avg": sum(accel_y) / len(accel_y)},
+            "z": {"min": min(accel_z), "max": max(accel_z), "avg": sum(accel_z) / len(accel_z)}
+        },
+        "gyroscope": {
+            "x": {"min": min(gyro_x), "max": max(gyro_x), "avg": sum(gyro_x) / len(gyro_x)},
+            "y": {"min": min(gyro_y), "max": max(gyro_y), "avg": sum(gyro_y) / len(gyro_y)},
+            "z": {"min": min(gyro_z), "max": max(gyro_z), "avg": sum(gyro_z) / len(gyro_z)}
         }
     }
     

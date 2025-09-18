@@ -7,6 +7,12 @@ export interface TelemetryData {
   altitude: number;
   latitude: number;
   longitude: number;
+  accel_x: number;
+  accel_y: number;
+  accel_z: number;
+  gyro_x: number;
+  gyro_y: number;
+  gyro_z: number;
   status: number;
   received_at: string;
 }
@@ -32,6 +38,16 @@ export interface TelemetryStats {
     min: number;
     max: number;
     avg: number;
+  };
+  accelerometer: {
+    x: { min: number; max: number; avg: number };
+    y: { min: number; max: number; avg: number };
+    z: { min: number; max: number; avg: number };
+  };
+  gyroscope: {
+    x: { min: number; max: number; avg: number };
+    y: { min: number; max: number; avg: number };
+    z: { min: number; max: number; avg: number };
   };
 }
 
