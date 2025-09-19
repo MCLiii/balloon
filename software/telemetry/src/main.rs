@@ -4,15 +4,13 @@ use rand::Rng;
 use std::mem;
 
 // Conditional imports for ARM Linux (Raspberry Pi)
-#[cfg(all(target_os = "linux", target_arch = "arm"))]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 use rppal::i2c::I2c;
 
-#[cfg(all(target_os = "linux", target_arch = "arm"))]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 mod i2c;
 
-#[cfg(all(target_os = "linux", target_arch = "arm"))]
-use i2c::MPL115A2::{MPL115A2, PressureReading};
-#[cfg(all(target_os = "linux", target_arch = "arm"))]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 use i2c::MPU6050::{MPU6050, MotionReading};
 
 
@@ -22,7 +20,6 @@ struct TelemetryPacket {
     sync: u64,
     timestamp: u64,
     temperature: f32,
-    pressure: f32,
     humidity: f32,
     altitude: f32,
     latitude: f32,
@@ -48,7 +45,6 @@ impl TelemetryPacket {
             sync: 0xFF_FF_FF_FF_FF_FF_FF_FF,
             timestamp: now,
             temperature: rng.gen_range(-40.0..=60.0), // Temperature in Celsius
-            pressure: rng.gen_range(800.0..=1200.0),  // Pressure in hPa
             humidity: rng.gen_range(0.0..=100.0),     // Humidity percentage
             altitude: rng.gen_range(0.0..=50000.0),   // Altitude in meters
             latitude: rng.gen_range(-90.0..=90.0),    // Latitude in degrees
@@ -63,68 +59,21 @@ impl TelemetryPacket {
         }
     }
     
-    #[cfg(all(target_os = "linux", target_arch = "arm"))]
-    fn new_with_sensor_data(pressure_kpa: f32, temperature_celsius: f32) -> Self {
-        let mut rng = rand::thread_rng();
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        
-        let pressure_hpa = pressure_kpa * 10.0;
-        // Calculate altitude from pressure using barometric formula
-        // h = 44330 * (1 - (P/P0)^0.1903) where P0 = 1013.25 hPa (sea level pressure)
-        let sea_level_pressure = 1013.25;
-        let altitude = if pressure_hpa > 0.0 {
-            44330.0 * (1.0 - (pressure_hpa / sea_level_pressure).powf(0.1903))
-        } else {
-            0.0
-        };
-
-        Self {
-            sync: 0xFF_FF_FF_FF_FF_FF_FF_FF,
-            timestamp: now,
-            temperature: temperature_celsius,
-            pressure: pressure_kpa,
-            humidity: rng.gen_range(0.0..=100.0),     // Humidity percentage (still simulated)
-            altitude,
-            latitude: rng.gen_range(-90.0..=90.0),    // Latitude in degrees (still simulated)
-            longitude: rng.gen_range(-180.0..=180.0), // Longitude in degrees (still simulated)
-            accel_x: rng.gen_range(-20.0..=20.0),     // Accelerometer X in m/s² (simulated)
-            accel_y: rng.gen_range(-20.0..=20.0),     // Accelerometer Y in m/s² (simulated)
-            accel_z: rng.gen_range(-20.0..=20.0),     // Accelerometer Z in m/s² (simulated)
-            gyro_x: rng.gen_range(-2000.0..=2000.0),  // Gyroscope X in °/s (simulated)
-            gyro_y: rng.gen_range(-2000.0..=2000.0),  // Gyroscope Y in °/s (simulated)
-            gyro_z: rng.gen_range(-2000.0..=2000.0),  // Gyroscope Z in °/s (simulated)
-            status: 0x01, // Status byte indicating real sensor data
-        }
-    }
     
-    #[cfg(all(target_os = "linux", target_arch = "arm"))]
-    fn new_with_full_sensor_data(pressure_kpa: f32, temperature_celsius: f32, motion: MotionReading) -> Self {
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    fn new_with_motion_data(temperature_celsius: f32, motion: MotionReading) -> Self {
         let mut rng = rand::thread_rng();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        
-        let pressure_hpa = pressure_kpa * 10.0;
-        // Calculate altitude from pressure using barometric formula
-        // h = 44330 * (1 - (P/P0)^0.1903) where P0 = 1013.25 hPa (sea level pressure)
-        let sea_level_pressure = 1013.25;
-        let altitude = if pressure_hpa > 0.0 {
-            44330.0 * (1.0 - (pressure_hpa / sea_level_pressure).powf(0.1903))
-        } else {
-            0.0
-        };
 
         Self {
             sync: 0xFF_FF_FF_FF_FF_FF_FF_FF,
             timestamp: now,
             temperature: temperature_celsius,
-            pressure: pressure_kpa,
             humidity: rng.gen_range(0.0..=100.0),     // Humidity percentage (still simulated)
-            altitude,
+            altitude: rng.gen_range(0.0..=50000.0),   // Altitude in meters (simulated)
             latitude: rng.gen_range(-90.0..=90.0),    // Latitude in degrees (still simulated)
             longitude: rng.gen_range(-180.0..=180.0), // Longitude in degrees (still simulated)
             accel_x: motion.accelerometer.x,
@@ -133,7 +82,7 @@ impl TelemetryPacket {
             gyro_x: motion.gyroscope.x,
             gyro_y: motion.gyroscope.y,
             gyro_z: motion.gyroscope.z,
-            status: 0x03, // Status byte indicating real pressure, temperature, and motion data
+            status: 0x02, // Status byte indicating real temperature and motion data
         }
     }
 
@@ -147,43 +96,8 @@ impl TelemetryPacket {
     }
 }
 
-#[cfg(all(target_os = "linux", target_arch = "arm"))]
-fn init_barometer(i2c: I2c) -> Option<MPL115A2> {
-    let barometer: Option<MPL115A2> = match MPL115A2::new(i2c) {
-        Ok(sensor) => {
-            println!("MPL115A2 barometer initialized successfully");
-            Some(sensor)
-        }
-        Err(e) => {
-            eprintln!("Failed to initialize MPL115A2 barometer: {}", e);
-            eprintln!("Continuing with simulated data...");
-            None
-        }
-    };
 
-    return barometer;
-}
-
-#[cfg(all(target_os = "linux", target_arch = "arm"))]
-fn read_barometer(barometer: &mut Option<MPL115A2>) -> Option<PressureReading> {
-    if let Some(ref mut baro) = barometer {
-        match baro.read_pressure() {
-            Ok(reading) => {
-                println!("Barometer reading: {:.2} kPa, {:.2}°C", 
-                         reading.pressure_kpa, reading.temperature_celsius);
-                Some(reading)
-            },
-            Err(e) => {
-                eprintln!("Failed to read barometer: {}", e);
-                None
-            }
-        }
-    } else {
-        None
-    }
-}
-
-#[cfg(all(target_os = "linux", target_arch = "arm"))]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 fn init_motion_sensor(i2c: I2c) -> Option<MPU6050> {
     let motion_sensor: Option<MPU6050> = match MPU6050::new(i2c, false) {
         Ok(sensor) => {
@@ -200,7 +114,7 @@ fn init_motion_sensor(i2c: I2c) -> Option<MPU6050> {
     return motion_sensor;
 }
 
-#[cfg(all(target_os = "linux", target_arch = "arm"))]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 fn read_motion_sensor(motion_sensor: &mut Option<MPU6050>) -> Option<MotionReading> {
     if let Some(ref mut motion) = motion_sensor {
         match motion.read_all() {
@@ -222,24 +136,14 @@ fn read_motion_sensor(motion_sensor: &mut Option<MPU6050>) -> Option<MotionReadi
 }
 
 // Fallback functions for non-ARM Linux systems
-#[cfg(not(all(target_os = "linux", target_arch = "arm")))]
-fn init_barometer(_i2c: ()) -> () {
-    println!("Running on non-ARM Linux system - using simulated data");
-    ()
-}
 
-#[cfg(not(all(target_os = "linux", target_arch = "arm")))]
-fn read_barometer(_barometer: &mut ()) -> () {
-    ()
-}
-
-#[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
 fn init_motion_sensor(_i2c: ()) -> () {
     println!("Running on non-ARM Linux system - using simulated data");
     ()
 }
 
-#[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
 fn read_motion_sensor(_motion_sensor: &mut ()) -> () {
     ()
 }
@@ -253,37 +157,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Sending packets to: {}", target_addr);
     
     // Check if running on ARM Linux (Raspberry Pi)
-    #[cfg(all(target_os = "linux", target_arch = "arm"))]
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
     {
         println!("Detected ARM Linux system - attempting to initialize Raspberry Pi sensors...");
         
-        // Initialize I2C and sensors
-        let i2c = I2c::new()?;
-        let mut barometer = init_barometer(i2c);
-        
-        // Initialize MPU6050 motion sensor (using a new I2C instance)
+        // Initialize MPU6050 motion sensor
         let i2c_motion = I2c::new()?;
         let mut motion_sensor = init_motion_sensor(i2c_motion);
         
         loop {
-            let pressure_reading = read_barometer(&mut barometer);
             let motion_reading = read_motion_sensor(&mut motion_sensor);
             
-            let packet = match (pressure_reading, motion_reading) {
-                (Some(pressure), Some(motion)) => {
-                    TelemetryPacket::new_with_full_sensor_data(
-                        pressure.pressure_kpa, 
-                        pressure.temperature_celsius, 
+            let packet = match motion_reading {
+                Some(motion) => {
+                    TelemetryPacket::new_with_motion_data(
+                        motion.temperature, 
                         motion
                     )
                 },
-                (Some(pressure), None) => {
-                    TelemetryPacket::new_with_sensor_data(
-                        pressure.pressure_kpa, 
-                        pressure.temperature_celsius
-                    )
-                },
-                _ => TelemetryPacket::new() // Fallback to simulated data
+                None => TelemetryPacket::new() // Fallback to simulated data
             };
             
             let bytes = packet.as_bytes();
@@ -302,16 +194,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     
-    #[cfg(not(all(target_os = "linux", target_arch = "arm")))]
+    #[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
     {
         println!("Not running on ARM Linux - using simulated data only");
         
-        // Initialize dummy sensors for non-ARM systems
-        let mut barometer = init_barometer(());
+        // Initialize dummy sensor for non-ARM systems
         let mut motion_sensor = init_motion_sensor(());
         
         loop {
-            let _pressure_reading = read_barometer(&mut barometer);
             let _motion_reading = read_motion_sensor(&mut motion_sensor);
             
             // Always use simulated data for non-ARM systems
