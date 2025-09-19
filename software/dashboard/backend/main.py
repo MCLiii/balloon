@@ -39,38 +39,36 @@ class TelemetryPacket:
     """Represents the telemetry packet structure from Rust code"""
     def __init__(self, data: bytes):
         # Unpack the binary data according to the Rust struct
-        # sync: u64, timestamp: u64, temperature: f32, pressure: f32,
+        # sync: u64, timestamp: u64, temperature: f32,
         # humidity: f32, altitude: f32, latitude: f32, longitude: f32,
         # accel_x: f32, accel_y: f32, accel_z: f32,
         # gyro_x: f32, gyro_y: f32, gyro_z: f32, status: u8
         print(f"Received {len(data)} bytes")
-        unpacked = struct.unpack('<QQffffffffffffB', data)  # Little-endian format
+        unpacked = struct.unpack('<QQfffffffB', data)  # Little-endian format
         self.sync = unpacked[0]
         self.timestamp = unpacked[1]
         self.temperature = unpacked[2]
-        self.pressure = unpacked[3]
-        self.humidity = unpacked[4]
-        self.altitude = unpacked[5]
-        self.latitude = unpacked[6]
-        self.longitude = unpacked[7]
-        self.accel_x = unpacked[8]
-        self.accel_y = unpacked[9]
-        self.accel_z = unpacked[10]
-        self.gyro_x = unpacked[11]
-        self.gyro_y = unpacked[12]
-        self.gyro_z = unpacked[13]
-        self.status = unpacked[14]
+        # self.humidity = unpacked[3]
+        # self.altitude = unpacked[4]
+        # self.latitude = unpacked[5]
+        # self.longitude = unpacked[6]
+        self.accel_x = unpacked[3]
+        self.accel_y = unpacked[4]
+        self.accel_z = unpacked[5]
+        self.gyro_x = unpacked[6]
+        self.gyro_y = unpacked[7]
+        self.gyro_z = unpacked[8]
+        self.status = unpacked[9]
     
     def to_dict(self) -> Dict[str, Any]:
         return {
             'sync': self.sync,
             'timestamp': self.timestamp,
             'temperature': self.temperature,
-            'pressure': self.pressure,
-            'humidity': self.humidity,
-            'altitude': self.altitude,
-            'latitude': self.latitude,
-            'longitude': self.longitude,
+            # 'humidity': self.humidity,
+            # 'altitude': self.altitude,
+            # 'latitude': self.latitude,
+            # 'longitude': self.longitude,
             'accel_x': self.accel_x,
             'accel_y': self.accel_y,
             'accel_z': self.accel_z,
@@ -84,10 +82,8 @@ class TelemetryPacket:
 async def start_udp_receiver():
     """Start UDP receiver to listen for telemetry packets"""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('127.0.0.1', 3000))
+    sock.bind(('0.0.0.0', 3000))
     sock.setblocking(False)
-    
-    print("UDP receiver started on 127.0.0.1:3000")
     
     loop = asyncio.get_event_loop()
     
@@ -163,9 +159,6 @@ async def get_telemetry_stats():
         return {"stats": None}
     
     temperatures = [d['temperature'] for d in telemetry_data]
-    pressures = [d['pressure'] for d in telemetry_data]
-    humidities = [d['humidity'] for d in telemetry_data]
-    altitudes = [d['altitude'] for d in telemetry_data]
     accel_x = [d['accel_x'] for d in telemetry_data]
     accel_y = [d['accel_y'] for d in telemetry_data]
     accel_z = [d['accel_z'] for d in telemetry_data]
@@ -179,21 +172,6 @@ async def get_telemetry_stats():
             "min": min(temperatures),
             "max": max(temperatures),
             "avg": sum(temperatures) / len(temperatures)
-        },
-        "pressure": {
-            "min": min(pressures),
-            "max": max(pressures),
-            "avg": sum(pressures) / len(pressures)
-        },
-        "humidity": {
-            "min": min(humidities),
-            "max": max(humidities),
-            "avg": sum(humidities) / len(humidities)
-        },
-        "altitude": {
-            "min": min(altitudes),
-            "max": max(altitudes),
-            "avg": sum(altitudes) / len(altitudes)
         },
         "accelerometer": {
             "x": {"min": min(accel_x), "max": max(accel_x), "avg": sum(accel_x) / len(accel_x)},

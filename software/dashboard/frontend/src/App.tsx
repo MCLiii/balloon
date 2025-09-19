@@ -2,7 +2,7 @@ import React from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import TelemetryDashboard from './components/TelemetryDashboard';
 import TelemetryCharts from './components/TelemetryCharts';
-import TelemetryMap from './components/TelemetryMap';
+// import TelemetryMap from './components/TelemetryMap';
 import { Activity, Wifi, WifiOff } from 'lucide-react';
 import './styles/styles.css';
 
@@ -72,8 +72,8 @@ function App() {
           <div className="mb-8">
             <h2 className="section-header">Current Readings</h2>
             <TelemetryDashboard data={latestData} />
-            <h2 className="section-header">Location & Trajectory</h2>
-            <TelemetryMap data={telemetryData} latestData={latestData} />
+            {/* <h2 className="section-header">Location & Trajectory</h2>
+            <TelemetryMap data={telemetryData} latestData={latestData} /> */}
           </div>
 
         

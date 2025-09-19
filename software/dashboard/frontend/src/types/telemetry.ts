@@ -2,11 +2,6 @@ export interface TelemetryData {
   sync: number;
   timestamp: number;
   temperature: number;
-  pressure: number;
-  humidity: number;
-  altitude: number;
-  latitude: number;
-  longitude: number;
   accel_x: number;
   accel_y: number;
   accel_z: number;
@@ -20,21 +15,6 @@ export interface TelemetryData {
 export interface TelemetryStats {
   total_packets: number;
   temperature: {
-    min: number;
-    max: number;
-    avg: number;
-  };
-  pressure: {
-    min: number;
-    max: number;
-    avg: number;
-  };
-  humidity: {
-    min: number;
-    max: number;
-    avg: number;
-  };
-  altitude: {
     min: number;
     max: number;
     avg: number;
