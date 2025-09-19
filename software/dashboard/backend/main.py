@@ -7,24 +7,164 @@ import socket
 import struct
 import json
 import time
+import aiosqlite
+import uuid
 from datetime import datetime
 from typing import List, Dict, Any
 import uvicorn
 from contextlib import asynccontextmanager
 
 # Global variables for data storage and WebSocket connections
-telemetry_data: List[Dict[str, Any]] = []
 connected_clients: List[WebSocket] = []
+current_session_id: str = ""
+db_path = "telemetry.db"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Start UDP receiver
+    # Startup: Initialize database and start UDP receiver
+    await init_database()
+    await start_new_session()
     asyncio.create_task(start_udp_receiver())
     yield
     # Shutdown: cleanup if needed
     pass
 
 app = FastAPI(lifespan=lifespan)
+
+async def init_database():
+    """Initialize the SQLite database"""
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                start_time TEXT NOT NULL,
+                end_time TEXT,
+                packet_count INTEGER DEFAULT 0
+            )
+        ''')
+        await db.commit()
+
+async def start_new_session():
+    """Start a new telemetry session and create a new table"""
+    global current_session_id
+    current_session_id = str(uuid.uuid4())
+    session_start = datetime.now().isoformat()
+    
+    # Create session record
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            'INSERT INTO sessions (id, start_time) VALUES (?, ?)',
+            (current_session_id, session_start)
+        )
+        
+        # Create table for this session
+        table_name = f"session_{current_session_id.replace('-', '_')}"
+        await db.execute(f'''
+            CREATE TABLE IF NOT EXISTS {table_name} (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sync TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                temperature REAL NOT NULL,
+                accel_x REAL NOT NULL,
+                accel_y REAL NOT NULL,
+                accel_z REAL NOT NULL,
+                gyro_x REAL NOT NULL,
+                gyro_y REAL NOT NULL,
+                gyro_z REAL NOT NULL,
+                status INTEGER NOT NULL,
+                received_at TEXT NOT NULL
+            )
+        ''')
+        await db.commit()
+    
+    print(f"Started new session: {current_session_id}")
+    print(f"Created table: session_{current_session_id.replace('-', '_')}")
+
+async def insert_telemetry_data(data: Dict[str, Any]):
+    """Insert telemetry data into the current session's table"""
+    table_name = f"session_{current_session_id.replace('-', '_')}"
+    
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(f'''
+            INSERT INTO {table_name} 
+            (sync, timestamp, temperature, accel_x, accel_y, accel_z, 
+             gyro_x, gyro_y, gyro_z, status, received_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            str(data['sync']), str(data['timestamp']), data['temperature'],
+            data['accel_x'], data['accel_y'], data['accel_z'],
+            data['gyro_x'], data['gyro_y'], data['gyro_z'],
+            data['status'], data['received_at']
+        ))
+        
+        # Update session packet count
+        await db.execute(
+            'UPDATE sessions SET packet_count = packet_count + 1 WHERE id = ?',
+            (current_session_id,)
+        )
+        
+        await db.commit()
+
+async def get_telemetry_data(limit: int = 1000):
+    """Get telemetry data from the current session"""
+    table_name = f"session_{current_session_id.replace('-', '_')}"
+    
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(f'''
+            SELECT sync, timestamp, temperature, accel_x, accel_y, accel_z,
+                   gyro_x, gyro_y, gyro_z, status, received_at
+            FROM {table_name}
+            ORDER BY id DESC
+            LIMIT ?
+        ''', (limit,)) as cursor:
+            rows = await cursor.fetchall()
+            
+            return [
+                {
+                    'sync': int(row[0]),
+                    'timestamp': int(row[1]),
+                    'temperature': row[2],
+                    'accel_x': row[3],
+                    'accel_y': row[4],
+                    'accel_z': row[5],
+                    'gyro_x': row[6],
+                    'gyro_y': row[7],
+                    'gyro_z': row[8],
+                    'status': row[9],
+                    'received_at': row[10]
+                }
+                for row in rows
+            ]
+
+async def get_latest_telemetry_data():
+    """Get the latest telemetry data from the current session"""
+    table_name = f"session_{current_session_id.replace('-', '_')}"
+    
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(f'''
+            SELECT sync, timestamp, temperature, accel_x, accel_y, accel_z,
+                   gyro_x, gyro_y, gyro_z, status, received_at
+            FROM {table_name}
+            ORDER BY id DESC
+            LIMIT 1
+        ''') as cursor:
+            row = await cursor.fetchone()
+            
+            if row:
+                return {
+                    'sync': int(row[0]),
+                    'timestamp': int(row[1]),
+                    'temperature': row[2],
+                    'accel_x': row[3],
+                    'accel_y': row[4],
+                    'accel_z': row[5],
+                    'gyro_x': row[6],
+                    'gyro_y': row[7],
+                    'gyro_z': row[8],
+                    'status': row[9],
+                    'received_at': row[10]
+                }
+            return None
 
 # Enable CORS for React frontend
 app.add_middleware(
@@ -43,7 +183,6 @@ class TelemetryPacket:
         # humidity: f32, altitude: f32, latitude: f32, longitude: f32,
         # accel_x: f32, accel_y: f32, accel_z: f32,
         # gyro_x: f32, gyro_y: f32, gyro_z: f32, status: u8
-        print(f"Received {len(data)} bytes")
         unpacked = struct.unpack('<QQfffffffB', data)  # Little-endian format
         self.sync = unpacked[0]
         self.timestamp = unpacked[1]
@@ -96,19 +235,12 @@ async def start_udp_receiver():
             try:
                 packet = TelemetryPacket(data)
                 packet_dict = packet.to_dict()
-                print(f"Parsed packet: {packet_dict}")
                 
-                # Store the data
-                telemetry_data.append(packet_dict)
-                
-                # Keep only last 1000 records to prevent memory issues
-                if len(telemetry_data) > 1000:
-                    telemetry_data.pop(0)
+                # Store the data in database
+                await insert_telemetry_data(packet_dict)
                 
                 # Broadcast to all connected WebSocket clients
                 await broadcast_telemetry(packet_dict)
-                
-                print(f"Received telemetry from {addr}: {packet_dict}")
                 
             except struct.error as e:
                 print(f"Error parsing telemetry packet: {e}")
@@ -143,49 +275,64 @@ async def broadcast_telemetry(data: Dict[str, Any]):
 @app.get("/api/telemetry")
 async def get_telemetry():
     """Get all telemetry data"""
-    return {"data": telemetry_data}
+    data = await get_telemetry_data()
+    return {"data": data}
 
 @app.get("/api/telemetry/latest")
 async def get_latest_telemetry():
     """Get the latest telemetry packet"""
-    if telemetry_data:
-        return {"data": telemetry_data[-1]}
-    return {"data": None}
+    data = await get_latest_telemetry_data()
+    return {"data": data}
 
-@app.get("/api/telemetry/stats")
-async def get_telemetry_stats():
-    """Get telemetry statistics"""
-    if not telemetry_data:
-        return {"stats": None}
-    
-    temperatures = [d['temperature'] for d in telemetry_data]
-    accel_x = [d['accel_x'] for d in telemetry_data]
-    accel_y = [d['accel_y'] for d in telemetry_data]
-    accel_z = [d['accel_z'] for d in telemetry_data]
-    gyro_x = [d['gyro_x'] for d in telemetry_data]
-    gyro_y = [d['gyro_y'] for d in telemetry_data]
-    gyro_z = [d['gyro_z'] for d in telemetry_data]
-    
-    stats = {
-        "total_packets": len(telemetry_data),
-        "temperature": {
-            "min": min(temperatures),
-            "max": max(temperatures),
-            "avg": sum(temperatures) / len(temperatures)
-        },
-        "accelerometer": {
-            "x": {"min": min(accel_x), "max": max(accel_x), "avg": sum(accel_x) / len(accel_x)},
-            "y": {"min": min(accel_y), "max": max(accel_y), "avg": sum(accel_y) / len(accel_y)},
-            "z": {"min": min(accel_z), "max": max(accel_z), "avg": sum(accel_z) / len(accel_z)}
-        },
-        "gyroscope": {
-            "x": {"min": min(gyro_x), "max": max(gyro_x), "avg": sum(gyro_x) / len(gyro_x)},
-            "y": {"min": min(gyro_y), "max": max(gyro_y), "avg": sum(gyro_y) / len(gyro_y)},
-            "z": {"min": min(gyro_z), "max": max(gyro_z), "avg": sum(gyro_z) / len(gyro_z)}
-        }
-    }
-    
-    return {"stats": stats}
+@app.post("/api/sessions/new")
+async def start_new_session_endpoint():
+    """Start a new telemetry session"""
+    await start_new_session()
+    return {"session_id": current_session_id, "message": "New session started"}
+
+@app.get("/api/sessions")
+async def get_sessions():
+    """Get all telemetry sessions"""
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute('''
+            SELECT id, start_time, end_time, packet_count 
+            FROM sessions 
+            ORDER BY start_time DESC
+        ''') as cursor:
+            rows = await cursor.fetchall()
+            
+            return {
+                "sessions": [
+                    {
+                        "id": row[0],
+                        "start_time": row[1],
+                        "end_time": row[2],
+                        "packet_count": row[3]
+                    }
+                    for row in rows
+                ]
+            }
+
+@app.get("/api/sessions/current")
+async def get_current_session():
+    """Get current session information"""
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            'SELECT id, start_time, end_time, packet_count FROM sessions WHERE id = ?',
+            (current_session_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            
+            if row:
+                return {
+                    "session": {
+                        "id": row[0],
+                        "start_time": row[1],
+                        "end_time": row[2],
+                        "packet_count": row[3]
+                    }
+                }
+            return {"session": None}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -196,10 +343,11 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         # Send initial data
-        if telemetry_data:
+        initial_data = await get_telemetry_data(limit=50)
+        if initial_data:
             initial_message = json.dumps({
                 "type": "initial_data",
-                "data": telemetry_data[-50:]  # Send last 50 records
+                "data": initial_data
             })
             await websocket.send_text(initial_message)
         
